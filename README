@@ -1,0 +1,86 @@
+== PFE tools ==
+
+This repository contains a set of tools I'm using to reverse engineer the PFE
+(Packet Forwarding Engine) on the LS1024A SoC in order to make it work without
+the need for binary blobs.
+
+All of my findings are documented in a separate repository:
+https://github.com/Bonstra/c2000doc
+
+Those tools are accessing the hardware registers directly, so obviously, they
+will only run on LS1024A-based hardware.
+
+Tested on a QNAP TS-x31 NAS.
+
+= Building =
+
+You need to cross-compile the tools for the OS installed on your LS1024A
+device, which means you must first get a matching toolchain.
+When this is done, you must create a config.mk file.
+For instance, let's assume your cross toolchain is installed in
+/opt/arm-cross-tools and has triple "arm-unknown-linux-gnueabihf", then a
+corresponding config.mk for that toolchain would be:
+
+config.mk:
+CROSS_COMPILE := /opt/arm-cross-tools/bin/arm-unknown-linux-gnueabihf-
+
+You can also define the INSTALL_HOST, INSTALL_USER and INSTALL_PATH variable to
+be able to install the tools you built on the device using SSH. For instance:
+
+config.mk:
+CROSS_COMPILE := /opt/arm-cross-tools/bin/arm-unknown-linux-gnueabihf-
+INSTALL_HOST := 192.168.0.1
+INSTALL_USER := root
+INSTALL_PATH := /root/bin/
+
+You may also override CFLAGS and LDFLAGS if you want. Read the Makefile for
+the full list.
+
+When your config.mk contains the correct information, run:
+  make all
+
+This will build all the tools. You can then copy the binaries to the device.
+
+If your device is running a SSH server and you have defined the INSTALL_
+variables in you config.mk, you can run:
+  make install
+
+and the binaries will be copied to your device automatically.
+
+= Usage =
+
+There are currently two different tools:
+- pfe_mem: read and write various PFE memories
+- pfe_test: dump registers for specific PFE hardware blocks
+
+Both of those tools are work-in-progress and are not very user-friendly. You
+will likely have to read the code to understand what they do.
+
+You should also install the devmem or devmem2 tool on your device, so that you
+can read/write registers other than PFE registers. You will need to have the
+HFE_SYS clock enabled to use the tools without locking your system. The
+HFE_CORE clock may also be required for accessing the PFE core memories.
+
+You will also need hardware documentation. Either clone and build the doc at
+https://github.com/Bonstra/c2000doc , or go to
+https://www.bonstra.fr.eu.org/c2000doc/ and save the HTML so you have it handy.
+
+The pfe_mem tool has a built-in usage text describing all the possible
+commands, but not all of them are actually implemented.
+
+The pfe_test understands the following commands:
+- pfe_test bmu[1|2] dump - Dump BMU1 or BMU2 registers
+- pfe_test bmu[1|2] reset - Reset BMU1 or BMU2
+- pfe_test ddr clear - Fill the DDR zone reserved for the PFE with 0xAA bytes
+- pfe_test ddr hexdump - Dump the DDR zone reserved for the PFE
+- pfe_test [egpi[1-3]|hgpi] dump - Dump EGPI/HGPI registers
+- pfe_test [egpi[1-3]|hgpi] reset - Reset EGPI/HGPI block
+- pfe_test hif dump - Dump HIF registers
+- pfe_test hif_nocpy dump - Dump HIF_NOCPY registers
+- pfe_test hif_nocpy init - Initialize the HIF_NOCPY block (/!\ will write into
+                            DDR memory!)
+- pfe_test lmem clear - Fill LMEM with 0xAA bytes.
+- pfe_test lmem hexdump OFFSET LENGTH - Dump LMEM memory
+
+Note that the DDR region reserved for the PFE may vary depending on the product.
+Please adjust PFE_DDR_BASE and PFE_DDR_SIZE in regs.h to match your product!
