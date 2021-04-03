@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdio.h>
 
 #include "hw.h"
@@ -66,12 +67,18 @@ void hif_nocpy_dump(void)
 	hif_nocpy_dump_regs(hif_nocpy);
 }
 
-static void init_hif_nocpy_rx_bds(void)
+void hif_rx_ack_bd(volatile struct hif_desc *bd)
+{
+	bd->ctrl &= ~HIF_DESC_CTRL_PKT_XFER;
+	bd->status = 0;
+	bd->ctrl |= HIF_DESC_CTRL_DESC_EN;
+}
+
+void hif_init_rx_bds(void)
 {
 	const size_t NUM_BDS = HIF_RX_POOL_SIZE / sizeof(struct hif_desc);
 	size_t i;
-	volatile struct hif_desc *desc =
-		(volatile struct hif_desc *)&ddr[HIF_RX_POOL_OFFSET];
+	volatile struct hif_desc *desc = hif_rx_descs;
 
 	for (i = 0; i < NUM_BDS; i++, desc++) {
 		uint32_t next = PFE_DDR_BASE + HIF_RX_POOL_OFFSET;
@@ -87,12 +94,11 @@ static void init_hif_nocpy_rx_bds(void)
 	}
 }
 
-static void init_hif_nocpy_tx_bds(void)
+void hif_init_tx_bds(void)
 {
 	const size_t NUM_BDS = HIF_TX_POOL_SIZE / sizeof(struct hif_desc);
 	size_t i;
-	volatile struct hif_desc *desc =
-		(volatile struct hif_desc *)&ddr[HIF_TX_POOL_OFFSET];
+	volatile struct hif_desc *desc = hif_tx_descs;
 
 	for (i = 0; i < NUM_BDS; i++, desc++) {
 		uint32_t next = PFE_DDR_BASE + HIF_TX_POOL_OFFSET;
@@ -113,22 +119,21 @@ void hif_nocpy_init(void)
 	hif_nocpy->rx_ctrl = 0;
 	hif_nocpy->tx_ctrl = 0;
 
-	printf("Initializing Rx BDs...\n");
-	init_hif_nocpy_rx_bds();
-	printf("Initializing Tx BDs...\n");
-	init_hif_nocpy_tx_bds();
+	hif_init_rx_bds();
+	hif_init_tx_bds();
 
 	hif_nocpy->rx_bdp_addr = PFE_DDR_BASE + HIF_RX_POOL_OFFSET;
 	hif_nocpy->tx_bdp_addr = PFE_DDR_BASE + HIF_TX_POOL_OFFSET;
 
-	/* EGPI2 -> HIF_NOCPY */
-	egpi2->class_addr = CBUS_BASE_PE + HIF_NOCPY_OFFSET + 0x50;
 	/* HIF_NOCPY -> EGPI2 */
-	hif_nocpy->tmu_port0_addr = CBUS_BASE_PE + EGPI2_OFFSET + 0x30;
-	hif_nocpy->tmu_port1_addr = CBUS_BASE_PE + EGPI2_OFFSET + 0x30;
+	hif_nocpy->tmu_port0_addr = CBUS_BASE_PE + EGPI2_OFFSET +
+		offsetof(struct gpi_regs, inq_pktptr);
+	hif_nocpy->tmu_port1_addr = CBUS_BASE_PE + EGPI2_OFFSET +
+		offsetof(struct gpi_regs, inq_pktptr);
 
 	hif_nocpy->poll_ctrl = 0x04000400;
 	hif_nocpy->rx_ctrl = 0x5; /* DMA_EN | BDP_CH_START_WSTB */
 	hif_nocpy->tx_ctrl = 0x5; /* DMA_EN | BDP_CH_START_WSTB */
-	hif_nocpy->int_enable |= 0x15; /* INT | RXPKT_INT | TXPKT_INT */
+	hif_nocpy->int_enable =
+		HIF_INTSRC_INT | HIF_INTSRC_RXPKT | HIF_INTSRC_TXPKT;
 }

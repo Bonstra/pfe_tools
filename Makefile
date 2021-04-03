@@ -28,7 +28,7 @@ endif
 CFILES := $(wildcard *.c)
 HFILES := $(wildcard *.h)
 OFILES := $(addsuffix .o,$(basename $(CFILES)))
-EXEFILES := pfe_mem pfe_test
+EXEFILES := pfe_mem pfe_test pfe_run
 
 all: $(EXEFILES)
 
@@ -42,7 +42,10 @@ $(OFILES): $(HFILES)
 pfe_mem: pfe_mem.o mem.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
-pfe_test: pfe_test.o bmu.o gpi.o hif.o mem.o
+pfe_test: pfe_test.o bmu.o emac.o gpi.o hif.o mem.o
+	$(LD) $(LDFLAGS) -o $@ $^
+
+pfe_run: pfe_run.o bmu.o emac.o gpi.o hif.o mem.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
 clean:

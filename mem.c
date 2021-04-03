@@ -31,13 +31,18 @@ volatile uint8_t *cbus = NULL;
 volatile struct class_csr_regs *class_csr = NULL;
 volatile uint32_t *clkreset = NULL;
 volatile uint8_t *ddr = NULL;
+volatile struct emac_regs *emac1 = NULL;
+volatile struct emac_regs *emac2 = NULL;
+volatile struct emac_regs *emac3 = NULL;
 volatile struct gpi_regs *egpi1 = NULL;
 volatile struct gpi_regs *egpi2 = NULL;
 volatile struct gpi_regs *egpi3 = NULL;
 volatile struct gpi_regs *hgpi = NULL;
 volatile struct hif_regs *hif = NULL;
+volatile struct hif_desc *hif_rx_descs = NULL;
+volatile struct hif_desc *hif_tx_descs = NULL;
 volatile struct hif_nocpy_regs *hif_nocpy = NULL;
-volatile uint16_t *lmem = NULL;
+volatile uint8_t *lmem = NULL;
 volatile struct tmu_csr_regs *tmu_csr = NULL;
 volatile struct util_csr_regs *util_csr = NULL;
 
@@ -80,13 +85,18 @@ int map_create(void)
 	bmu1 = (volatile struct bmu_regs *)(cbus + BMU1_OFFSET);
 	bmu2 = (volatile struct bmu_regs *)(cbus + BMU2_OFFSET);
 	class_csr = (volatile struct class_csr_regs *)(cbus + CLASS_CSR_OFFSET);
+	hif_rx_descs = (volatile struct hif_desc *)&ddr[HIF_RX_POOL_OFFSET];
+	hif_tx_descs = (volatile struct hif_desc *)&ddr[HIF_TX_POOL_OFFSET];
+	emac1 = (volatile struct emac_regs *)(cbus + EMAC1_OFFSET);
 	egpi1 = (volatile struct gpi_regs *)(cbus + EGPI1_OFFSET);
+	emac2 = (volatile struct emac_regs *)(cbus + EMAC2_OFFSET);
 	egpi2 = (volatile struct gpi_regs *)(cbus + EGPI2_OFFSET);
+	emac3 = (volatile struct emac_regs *)(cbus + EMAC3_OFFSET);
 	egpi3 = (volatile struct gpi_regs *)(cbus + EGPI3_OFFSET);
 	hgpi = (volatile struct gpi_regs *)(cbus + HGPI_OFFSET);
 	hif = (volatile struct hif_regs *)(cbus + HIF_OFFSET);
 	hif_nocpy = (volatile struct hif_nocpy_regs *)(cbus + HIF_NOCPY_OFFSET);
-	lmem = (volatile uint16_t *)(cbus + LMEM_OFFSET);
+	lmem = (volatile uint8_t *)(cbus + LMEM_OFFSET);
 	tmu_csr = (volatile struct tmu_csr_regs *)(cbus + TMU_CSR_OFFSET);
 	util_csr = (volatile struct util_csr_regs *)(cbus + UTIL_CSR_OFFSET);
 
@@ -105,8 +115,11 @@ void map_destroy(void)
 	bmu1 = NULL;
 	bmu2 = NULL;
 	class_csr = NULL;
+	emac1 = NULL;
 	egpi1 = NULL;
+	emac2 = NULL;
 	egpi2 = NULL;
+	emac3 = NULL;
 	egpi3 = NULL;
 	hgpi = NULL;
 	hif = NULL;
@@ -125,6 +138,177 @@ void map_destroy(void)
 	if (ddr) {
 		munmap((void*)ddr, MAP_SIZE);
 		ddr = NULL;
+	}
+}
+
+bool is_ddr_addr(uint32_t addr)
+{
+	const uint32_t ddr_start = PFE_DDR_BASE;
+	const uint32_t ddr_end = PFE_DDR_BASE + PFE_DDR_SIZE;
+	return (addr >= ddr_start) && (addr < ddr_end);
+}
+
+bool is_lmem_addr(uint32_t addr)
+{
+	const uint32_t lmem_start = CBUS_BASE_PE + LMEM_OFFSET;
+	const uint32_t lmem_end = CBUS_BASE_PE + LMEM_OFFSET + LMEM_SIZE;
+	return (addr >= lmem_start) && (addr < lmem_end);
+}
+
+void copy_from_lmem(void *dst, uint32_t lsrc, size_t len)
+{
+	uint8_t *dstb = dst;
+	volatile uint32_t *srcw;
+	if (!is_lmem_addr(lsrc))
+		return;
+	srcw = (uint32_t *)(lmem + (lsrc - (CBUS_BASE_PE + LMEM_OFFSET)));
+	/* Read first bytes */
+	if (lsrc & 3) {
+		uint32_t i = lsrc & 3;
+		uint32_t val = *srcw;
+		if (i == 1) {
+			*dstb = val >> 16;
+			dstb++;
+			i++;
+			len--;
+		}
+		if (i == 2) {
+			*dstb = val >> 8;
+			dstb++;
+			i++;
+			len--;
+		}
+		if (i == 3) {
+			*dstb = val & 0xff;
+			dstb++;
+			i++;
+			len--;
+		}
+	}
+	/* Read as many words as possible */
+	while (len >= 4) {
+		uint32_t val = *srcw;
+		dstb[0] = val >> 24;
+		dstb[1] = val >> 16;
+		dstb[2] = val >> 8;
+		dstb[3] = val;
+		srcw++;
+		dstb += 4;
+		len -= 4;
+	}
+	/* Add remaining bytes */
+	if (len > 0) {
+		uint32_t val = *srcw;
+		if (len == 3) {
+			*dstb = val >> 24;
+			dstb++;
+			len--;
+		}
+		if (len == 2) {
+			*dstb = val >> 16;
+			dstb++;
+			len--;
+		}
+		if (len == 1) {
+			*dstb = val >> 8;
+			dstb++;
+			len--;
+		}
+	}
+}
+
+void copy_to_lmem(uint32_t ldst, const void *src, size_t len)
+{
+	const uint8_t *srcb = src;
+	volatile uint32_t *dstw;
+	if (!is_lmem_addr(ldst))
+		return;
+	dstw = (uint32_t *)(lmem + ((ldst - (CBUS_BASE_PE + LMEM_OFFSET)) >> 1));
+	/* Read first bytes */
+	if (ldst & 3) {
+		uint32_t i = ldst & 3;
+		uint32_t val = *dstw;
+		if (i == 1) {
+			val = (val & ~0x00ff0000) | ((uint32_t)(*srcb) << 16);
+			srcb++;
+			i++;
+			len--;
+		}
+		if (i == 2) {
+			val = (val & ~0x0000ff00) | ((uint32_t)(*srcb) << 8);
+			srcb++;
+			i++;
+			len--;
+		}
+		if (i == 3) {
+			val = (val & ~0x0000ff00) | ((uint32_t)(*srcb));
+			srcb++;
+			i++;
+			len--;
+		}
+		*dstw = val;
+	}
+	/* Read as many words as possible */
+	while (len >= 4) {
+		uint32_t val = 0;
+		val |= (uint32_t)srcb[0] << 24;
+		val |= (uint32_t)srcb[1] << 16;
+		val |= (uint32_t)srcb[2] << 8;
+		val |= (uint32_t)srcb[3];
+		*dstw = val;
+		dstw++;
+		srcb += 4;
+		len -= 4;
+	}
+	/* Add remaining bytes */
+	if (len > 0) {
+		uint32_t val = *dstw;
+		if (len == 3) {
+			val = (val & ~0xff000000) | ((uint32_t)*srcb << 24);
+			srcb++;
+			len--;
+		}
+		if (len == 2) {
+			val = (val & ~0x00ff0000) | ((uint32_t)*srcb << 16);
+			srcb++;
+			len--;
+		}
+		if (len == 1) {
+			val = (val & ~0x0000ff00) | ((uint32_t)*srcb << 8);
+			srcb++;
+			len--;
+		}
+		*dstw = val;
+	}
+}
+
+void copy_from_ddr(void *dst, uint32_t dsrc, size_t len)
+{
+	uint8_t *dstb = dst;
+	volatile uint8_t *srcb;
+	if (!is_ddr_addr(dsrc))
+		return;
+	srcb = ddr + (dsrc - PFE_DDR_BASE);
+	while(len > 0) {
+		*dstb = *srcb;
+		dstb++;
+		srcb++;
+		len--;
+	}
+}
+
+void copy_to_ddr(uint32_t ddst, const void *src, size_t len)
+{
+	volatile uint8_t *dstb;
+	const uint8_t *srcb = src;
+	if (!is_ddr_addr(ddst))
+		return;
+	dstb = ddr + (ddst - PFE_DDR_BASE);
+	while(len > 0) {
+		*dstb = *srcb;
+		dstb++;
+		srcb++;
+		len--;
 	}
 }
 

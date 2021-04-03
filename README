@@ -52,8 +52,9 @@ and the binaries will be copied to your device automatically.
 There are currently two different tools:
 - pfe_mem: read and write various PFE memories
 - pfe_test: dump registers for specific PFE hardware blocks
+- pfe_run: initialize PFE without firmware and show received packets
 
-Both of those tools are work-in-progress and are not very user-friendly. You
+All of these tools are work-in-progress and are not very user-friendly. You
 will likely have to read the code to understand what they do.
 
 You should also install the devmem or devmem2 tool on your device, so that you
@@ -75,6 +76,7 @@ The pfe_test understands the following commands:
 - pfe_test ddr hexdump - Dump the DDR zone reserved for the PFE
 - pfe_test [egpi[1-3]|hgpi] dump - Dump EGPI/HGPI registers
 - pfe_test [egpi[1-3]|hgpi] reset - Reset EGPI/HGPI block
+- pfe_test emac[1-3] dump - Dump EMAC registers
 - pfe_test hif dump - Dump HIF registers
 - pfe_test hif_nocpy dump - Dump HIF_NOCPY registers
 - pfe_test hif_nocpy init - Initialize the HIF_NOCPY block (/!\ will write into

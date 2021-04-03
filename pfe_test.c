@@ -1,23 +1,16 @@
 #define _GNU_SOURCE
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 #include "hw.h"
 #include "mem.h"
 #include "regs.h"
-
-#define MAP_SIZE 0x10000
 
 static void enable_pfe_sys_clk(void)
 {
@@ -112,10 +105,14 @@ static void lmem_clear(uint8_t pattern)
 {
 	size_t i;
 	size_t imax = LMEM_SIZE >> 1;
+	/* Cannot perform byte access at index (LMEM_SIZE - 1)
+	 * We must use 16 bit writes to work around this issue.
+	 */
+	volatile uint16_t *lmem16 = (volatile uint16_t *)lmem;
 	uint16_t hword = pattern;
 	hword = hword << 8 | pattern;
 	for (i = 0; i < imax; i++)
-		lmem[i] = hword;
+		lmem16[i] = hword;
 }
 
 static void ddr_clear(uint8_t pattern)
@@ -151,6 +148,31 @@ static int parse_bmu_opts(int argc, char *argv[], int argidx,
 		} else {
 			return -EINVAL;
 		}
+	} else {
+		fprintf(stderr, "Invalid command: %s\n", cmd);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int parse_emac_opts(int argc, char *argv[], int argidx,
+		unsigned int emacno)
+{
+	char *cmd;
+	if (argc - argidx < 1) {
+		fprintf(stderr, "Missing arguments.\n");
+		return -EINVAL;
+	}
+	if (emacno < 1 || emacno > 3) {
+		fprintf(stderr, "Invalid EMAC number: %u\n", emacno);
+		return -EINVAL;
+	}
+
+	cmd = argv[argidx];
+	if (strcmp(cmd, "dump") == 0) {
+		int res = emac_dump(emacno);
+		if (res)
+			return res;
 	} else {
 		fprintf(stderr, "Invalid command: %s\n", cmd);
 		return -EINVAL;
@@ -361,6 +383,15 @@ int main(int argc, char *argv[])
 			return EXIT_FAILURE;
 		}
 		if (parse_egpi_opts(argc, argv, 2, egpino))
+			return EXIT_FAILURE;
+	} else if (strncmp(cmd, "emac", 4) == 0) {
+		char emacno = cmd[4] - '0';
+		if (emacno < 0 || emacno > 9) {
+			fprintf(stderr, "Invalid EMAC number: '%c'.\n",
+					cmd[4]);
+			return EXIT_FAILURE;
+		}
+		if (parse_emac_opts(argc, argv, 2, emacno))
 			return EXIT_FAILURE;
 	} else if (strcmp(cmd, "hgpi") == 0) {
 		if (parse_hgpi_opts(argc, argv, 2))

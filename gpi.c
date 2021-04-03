@@ -1,5 +1,7 @@
 #include <errno.h>
 #include <inttypes.h>
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 
 #include "hw.h"
@@ -7,6 +9,56 @@
 void gpi_reset(volatile struct gpi_regs *gpi)
 {
 	gpi->ctrl |= 0x02;
+}
+
+void gpi_enable(volatile struct gpi_regs *gpi)
+{
+	gpi->ctrl = 0x01;
+}
+
+void gpi_disable(volatile struct gpi_regs *gpi)
+{
+	gpi->ctrl = 0x00;
+}
+
+bool gpi_is_enabled(volatile struct gpi_regs *gpi)
+{
+	return !!(gpi->ctrl & 1);
+}
+
+void gpi_init(volatile struct gpi_regs *gpi)
+{
+	const uint32_t LMEM_RETRIES = 0x40;
+	if (!gpi)
+		return;
+
+	gpi_enable(gpi);
+
+	gpi->rx_config = 0;
+
+	gpi_reset(gpi);
+
+	gpi->ddr_alloc_addr = CBUS_BASE_PE + BMU2_OFFSET +
+		offsetof(struct bmu_regs, alloc_ctrl);
+	gpi->ddr_free_addr = CBUS_BASE_PE + BMU2_OFFSET +
+		offsetof(struct bmu_regs, free_ctrl);
+	gpi->lmem_alloc_addr = CBUS_BASE_PE + BMU1_OFFSET +
+		offsetof(struct bmu_regs, alloc_ctrl);
+	gpi->lmem_free_addr = CBUS_BASE_PE + BMU1_OFFSET +
+		offsetof(struct bmu_regs, free_ctrl);
+
+	gpi->buf_size = (DDR_POOL_BUFLEN_BYTES << 16) | LMEM_POOL_BUFLEN_BYTES;
+	gpi->hdr_size = (DDR_POOL_HDR_SIZE << 16) | LMEM_POOL_HDR_SIZE;
+	gpi->ddr_data_offset = DDR_POOL_HDR_SIZE;
+	gpi->lmem_data_offset = LMEM_POOL_HDR_SIZE;
+
+	/* Forward incoming packets to HIF_NOCPY IN FIFO */
+	gpi->class_addr = CBUS_BASE_PE + HIF_NOCPY_OFFSET +
+		offsetof(struct hif_nocpy_regs, rx_inq0_pktptr);
+
+	gpi->tmlf_tx = 0xbc;
+	gpi->dtx_aseq = 0x40;
+	gpi->rx_config = (LMEM_RETRIES << 16) | 0x3; /* Use LMEM + DDR */
 }
 
 void gpi_dump_regs(volatile struct gpi_regs *gpi)

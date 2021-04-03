@@ -11,10 +11,33 @@
 #define HIF_TX_POOL_OFFSET 0xa80400
 #define HIF_TX_POOL_SIZE 0x400
 
+#define LMEM_POOL_OFFSET 0x0
+#define LMEM_POOL_SIZE 0x8000
+#define LMEM_POOL_BUFLEN_LOG2 7
+#define LMEM_POOL_BUFLEN_BYTES 0x80
+#define LMEM_POOL_BUF_COUNT 0x100
+#define LMEM_POOL_HDR_SIZE 0x10
+
+#define DDR_POOL_OFFSET 0x400000
+#define DDR_POOL_SIZE 0x600000
+#if 0
+#define DDR_POOL_BUFLEN_LOG2 11
+#define DDR_POOL_BUFLEN_BYTES 0x800
+#define DDR_POOL_BUF_COUNT 0xc00
+#define DDR_POOL_HDR_SIZE 0x100
+#else
+#define DDR_POOL_BUFLEN_LOG2 8
+#define DDR_POOL_BUFLEN_BYTES 0x100
+#define DDR_POOL_BUF_COUNT 0x6000
+#define DDR_POOL_HDR_SIZE 0x10
+#endif
+
 #define CBUS_BASE_PE 0xc0000000
 #define CBUS_BASE 0x9c000000
 #define CBUS_SIZE 0x01000000
+#define EMAC1_OFFSET 0x200000
 #define EGPI1_OFFSET 0x210000
+#define EMAC2_OFFSET 0x220000
 #define EGPI2_OFFSET 0x230000
 #define BMU1_OFFSET 0x240000
 #define BMU2_OFFSET 0x250000
@@ -24,6 +47,7 @@
 #define LMEM_SIZE 0x00010000
 #define TMU_CSR_OFFSET 0x310000
 #define CLASS_CSR_OFFSET 0x320000
+#define EMAC3_OFFSET 0x330000
 #define EGPI3_OFFSET 0x340000
 #define HIF_NOCPY_OFFSET 0x350000
 #define UTIL_CSR_OFFSET 0x360000
@@ -31,6 +55,8 @@
 #define CLKRESET_BASE 0x904b0000
 #define CLKRESET_AXI_CLK_CNTRL_1_OFFSET 0x44
 #define CLKRESET_PFE_SYS_CLK_ENABLE 0x08
+#define CLKRESET_AXI_RESET_1_OFFSET 0x54
+#define CLKRESET_PFE_SYS_RST 0x08
 #define CLKRESET_PFE_CLK_CNTRL_OFFSET 0x100
 #define CLKRESET_PFE_CORE_CLK_ENABLE 0x01
 
@@ -40,6 +66,12 @@
 #define PE_MEM_ACCESS_DMEM (1 << 16)
 #define PE_MEM_ACCESS_PE_ID(i) ((uint32_t)(i) << 20)
 #define PE_MEM_ACCESS_BYTE_ENABLE(e) ((uint32_t)(e) << 24)
+
+#define HIF_INTSRC_INT (1 << 0)
+#define HIF_INTSRC_RXBD (1 << 1)
+#define HIF_INTSRC_RXPKT (1 << 2)
+#define HIF_INTSRC_TXBD (1 << 3)
+#define HIF_INTSRC_TXPKT (1 << 4)
 
 #define HIF_DESC_CTRL_BUFLEN_MASK 0x3fff
 #define HIF_DESC_CTRL_CBD_INT_EN (1 << 16)
@@ -105,6 +137,137 @@ struct bmu_regs {
 	uint32_t high_watermark; /* 0x54 */
 };
 
+struct emac_regs {
+	uint32_t network_control; /* 0x000 */
+	uint32_t network_config; /* 0x004 */
+	uint32_t network_status; /* 0x008 */
+	uint32_t rsvd1; /* 0x00c */
+	uint32_t dma_config; /* 0x010 */
+	uint32_t rsvd2[8]; /* 0x014 */
+	uint32_t phy_management; /* 0x034 */
+	uint32_t rsvd3[18]; /* 0x038 */
+	uint32_t hash_bot; /* 0x080 */
+	uint32_t hash_top; /* 0x084 */
+	uint32_t spec1_add_bot; /* 0x088 */
+	uint32_t spec1_add_top; /* 0x08c */
+	uint32_t spec2_add_bot; /* 0x090 */
+	uint32_t spec2_add_top; /* 0x094 */
+	uint32_t spec3_add_bot; /* 0x098 */
+	uint32_t spec3_add_top; /* 0x09c */
+	uint32_t spec4_add_bot; /* 0x0a0 */
+	uint32_t spec4_add_top; /* 0x0a4 */
+	uint32_t rsvd4[4]; /* 0x0a8 */
+	uint32_t wol_enable; /* 0x0b8 */
+	uint32_t rsvd5[3]; /* 0x0bc */
+	uint32_t spec1_add_mask_bot; /* 0x0c8 */
+	uint32_t spec1_add_mask_top; /* 0x0cc */
+	uint32_t rsvd6[12]; /* 0x0d0 */
+	uint32_t octets_tx_bot; /* 0x100 */ /* Lower 32-bits for number of octets tx'd */
+	uint32_t octets_tx_top; /* 0x104 */ /* Upper 16-bits for number of octets tx'd */
+	uint32_t frames_tx; /* 0x108 */ /* Number of frames transmitted OK */
+	uint32_t broadcast_tx; /* 0x10c */ /* Number of broadcast frames transmitted */
+	uint32_t multicast_tx; /* 0x110 */ /* Number of multicast frames transmitted */
+	uint32_t pause_tx; /* 0x114 */ /* Number of pause frames transmitted. */
+	uint32_t frame64_tx; /* 0x118 */ /* Number of 64byte frames transmitted */
+	uint32_t frame65_127_tx; /* 0x11c */ /* Number of 65-127 byte frames transmitted */
+	uint32_t frame128_255_tx; /* 0x120 */ /* Number of 128-255 byte frames transmitted */
+	uint32_t frame256_511_tx; /* 0x124 */ /* Number of 256-511 byte frames transmitted */
+	uint32_t frame512_1023_tx; /* 0x128 */ /* Number of 512-1023 byte frames transmitted */
+	uint32_t frame1024_1518_tx; /* 0x12c */ /* Number of 1024-1518 byte frames transmitted*/
+	uint32_t frame1519_tx; /* 0x130 */ /* Number of frames greater than 1518 bytes tx*/
+	uint32_t tx_urun; /* 0x134 */ /* Transmit underrun errors due to DMA */
+	uint32_t single_col; /* 0x138 */ /* Number of single collision frames */
+	uint32_t multi_col; /* 0x13c */ /* Number of multi collision frames */
+	uint32_t excess_col; /* 0x140 */ /* Number of excessive collision frames. */
+	uint32_t late_col; /* 0x144 */ /* Collisions occuring after slot time */
+	uint32_t def_tx; /* 0x148 */ /* Frames deferred due to crs */
+	uint32_t crs_errors; /* 0x14c */ /* Errors caused by crs not being asserted. */
+	uint32_t octets_rx_bot; /* 0x150 */ /* Lower 32-bits for number of octets rx'd */
+	uint32_t octets_rx_top; /* 0x154 */ /* Upper 16-bits for number of octets rx'd */
+	uint32_t frames_rx; /* 0x158 */ /* Number of frames received OK */
+	uint32_t broadcast_rx; /* 0x15c */ /* Number of broadcast frames received */
+	uint32_t multicast_rx; /* 0x160 */ /* Number of multicast frames received */
+	uint32_t pause_rx; /* 0x164 */ /* Number of pause frames received. */
+	uint32_t frame64_rx; /* 0x168 */ /* Number of 64byte frames received */
+	uint32_t frame65_127_rx; /* 0x16c */ /* Number of 65-127 byte frames received */
+	uint32_t frame128_255_rx; /* 0x170 */ /* Number of 128-255 byte frames received */
+	uint32_t frame256_511_rx; /* 0x174 */ /* Number of 256-511 byte frames received */
+	uint32_t frame512_1023_rx; /* 0x178 */ /* Number of 512-1023 byte frames received */
+	uint32_t frame1024_1518_rx; /* 0x17c */ /* Number of 1024-1518 byte frames received*/
+	uint32_t frame1519_rx; /* 0x180 */ /* Number of frames greater than 1518 bytes rx*/
+	uint32_t usize_frames; /* 0x184 */ /* Frames received less than min of 64 bytes */
+	uint32_t excess_length; /* 0x188 */ /* Number of excessive length frames rx */
+	uint32_t jabbers; /* 0x18c */ /* Excessive length + crc or align errors. */
+	uint32_t fcs_errors; /* 0x190 */ /* Number of frames received with crc errors */
+	uint32_t length_check_errors; /* 0x194 */ /* Number of frames with incorrect length */
+	uint32_t rx_symbol_errors; /* 0x198 */ /* Number of times rx_er asserted during rx */
+	uint32_t align_errors; /* 0x19c */ /* Frames received without integer no. bytes */
+	uint32_t rx_res_errors; /* 0x1a0 */ /* Number of times buffers ran out during rx */
+	uint32_t rx_orun; /* 0x1a4 */ /* Receive overrun errors due to DMA */
+	uint32_t ip_cksum; /* 0x1a8 */ /* IP header checksum errors */
+	uint32_t tcp_cksum; /* 0x1ac */ /* TCP checksum errors */
+	uint32_t udp_cksum; /* 0x1b0 */ /* UDP checksum errors */
+	uint32_t rsvd7[83]; /* 0x1b4 */
+	uint32_t spec5_add_bot; /* 0x300 */
+	uint32_t spec5_add_top; /* 0x304 */
+	uint32_t spec6_add_bot; /* 0x308 */
+	uint32_t spec6_add_top; /* 0x30c */
+	uint32_t spec7_add_bot; /* 0x310 */
+	uint32_t spec7_add_top; /* 0x314 */
+	uint32_t spec8_add_bot; /* 0x318 */
+	uint32_t spec8_add_top; /* 0x31c */
+	uint32_t spec9_add_bot; /* 0x320 */
+	uint32_t spec9_add_top; /* 0x324 */
+	uint32_t spec10_add_bot; /* 0x328 */
+	uint32_t spec10_add_top; /* 0x32c */
+	uint32_t spec11_add_bot; /* 0x330 */
+	uint32_t spec11_add_top; /* 0x334 */
+	uint32_t spec12_add_bot; /* 0x338 */
+	uint32_t spec12_add_top; /* 0x33c */
+	uint32_t spec13_add_bot; /* 0x340 */
+	uint32_t spec13_add_top; /* 0x344 */
+	uint32_t spec14_add_bot; /* 0x348 */
+	uint32_t spec14_add_top; /* 0x34c */
+	uint32_t spec15_add_bot; /* 0x350 */
+	uint32_t spec15_add_top; /* 0x354 */
+	uint32_t spec16_add_bot; /* 0x358 */
+	uint32_t spec16_add_top; /* 0x35c */
+	uint32_t spec17_add_bot; /* 0x360 */
+	uint32_t spec17_add_top; /* 0x364 */
+	uint32_t spec18_add_bot; /* 0x368 */
+	uint32_t spec18_add_top; /* 0x36c */
+	uint32_t spec19_add_bot; /* 0x370 */
+	uint32_t spec19_add_top; /* 0x374 */
+	uint32_t spec20_add_bot; /* 0x378 */
+	uint32_t spec20_add_top; /* 0x37c */
+	uint32_t spec21_add_bot; /* 0x380 */
+	uint32_t spec21_add_top; /* 0x384 */
+	uint32_t spec22_add_bot; /* 0x388 */
+	uint32_t spec22_add_top; /* 0x38c */
+	uint32_t spec23_add_bot; /* 0x390 */
+	uint32_t spec23_add_top; /* 0x394 */
+	uint32_t spec24_add_bot; /* 0x398 */
+	uint32_t spec24_add_top; /* 0x39c */
+	uint32_t spec25_add_bot; /* 0x3a0 */
+	uint32_t spec25_add_top; /* 0x3a4 */
+	uint32_t spec26_add_bot; /* 0x3a8 */
+	uint32_t spec26_add_top; /* 0x3ac */
+	uint32_t spec27_add_bot; /* 0x3b0 */
+	uint32_t spec27_add_top; /* 0x3b4 */
+	uint32_t spec28_add_bot; /* 0x3b8 */
+	uint32_t spec28_add_top; /* 0x3bc */
+	uint32_t spec29_add_bot; /* 0x3c0 */
+	uint32_t spec29_add_top; /* 0x3c4 */
+	uint32_t spec30_add_bot; /* 0x3c8 */
+	uint32_t spec30_add_top; /* 0x3cc */
+	uint32_t spec31_add_bot; /* 0x3d0 */
+	uint32_t spec31_add_top; /* 0x3d4 */
+	uint32_t spec32_add_bot; /* 0x3d8 */
+	uint32_t spec32_add_top; /* 0x3dc */
+	uint32_t rsvd8[240]; /* 0x3e0 */
+	uint32_t control; /* 0x7a0 */
+};
+
 struct hif_regs {
 	uint32_t version; /* 0x00 */
 	uint32_t tx_ctrl; /* 0x04 */
@@ -168,6 +331,14 @@ struct hif_desc {
 	uint32_t status;
 	uint32_t data;
 	uint32_t next;
+};
+
+struct class_rx_hdr {
+	uint32_t next_ptr; /* ptr to the start of the first DDR buffer */
+	uint16_t length; /* total packet length (possibly including FCS) */
+	uint16_t phyno; /* input physical port number */
+	uint32_t status; /* gemac status bits bits[32:63]*/
+	uint32_t status2; /* gemac status bits bits[0:31] */
 };
 
 struct tmu_csr_regs {
